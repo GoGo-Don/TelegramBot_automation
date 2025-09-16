@@ -16,46 +16,47 @@ import signal
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
+from config.logging_config import (get_logger, get_performance_logger,
+                                   setup_logging)
 # Core imports
-from config.settings import get_config, AppConfig
-from config.logging_config import setup_logging, get_logger, get_performance_logger
-from core.telegram_handler import TelegramHandler, HandlerConfig
-from core.llm_processor import LLMProcessor
+from config.settings import AppConfig, get_config
 from core.decision_engine import DecisionEngine
+from core.llm_processor import LLMProcessor
 from core.state_manager import StateManager
-from integrations.woocommerce_handler import WooCommerceHandler
+from core.telegram_handler import HandlerConfig, TelegramHandler
 from integrations.excel_handler import ExcelHandler
+from integrations.woocommerce_handler import WooCommerceHandler
 from storage.cache_manager import CacheManager
 from utils.exceptions import ApplicationError, ConfigurationError
-from utils.helpers import ensure_directories, cleanup_temp_files
+from utils.helpers import cleanup_temp_files, ensure_directories
 
 
 class Application:
     """
     Main application class that orchestrates all components.
-    
+
     This class is responsible for initializing all components, managing
     their lifecycle, handling graceful shutdown, and coordinating
     communication between different parts of the system.
     """
-    
+
     def __init__(self, config: Optional[AppConfig] = None):
         """
         Initialize the application with configuration.
-        
+
         Args:
             config: Optional configuration override
         """
         # Load configuration
         self.config = config or get_config()
-        
+
         # Setup logging first
         self.logger = None
         self.perf_logger = None
         self._setup_logging()
-        
+
         # Initialize components
         self.state_manager: Optional[StateManager] = None
         self.cache_manager: Optional[CacheManager] = None
@@ -64,14 +65,12 @@ class Application:
         self.telegram_handler: Optional[TelegramHandler] = None
         self.woocommerce_handler: Optional[WooCommerceHandler] = None
         self.excel_handler: Optional[ExcelHandler] = None
-        
+
         # Application state
         self.is_running = False
         self.startup_time: Optional[datetime] = None
         self.shutdown_tasks: list = []
-        
-        self.logger.info(f"Application initialized - Version {self.config.app_version}")
-    
+
     def _setup_logging(self) -> None:
         """Setup logging configuration."""
         try:
@@ -87,54 +86,54 @@ class Application:
                 'log_to_console': self.config.logging.log_to_console,
                 'console_color': self.config.logging.console_color,
                 'module_levels': self.config.logging.module_levels,
-                'enable_performance_logging': self.config.logging.enable_performance_logging,
+
                 'slow_query_threshold_seconds': self.config.logging.slow_query_threshold_seconds,
                 'enable_structured_logging': self.config.logging.enable_structured_logging,
                 'log_context': self.config.logging.log_context
             }
-            
+
             # Setup logging
             setup_logging(logging_config)
-            
+
             # Get loggers
             self.logger = get_logger(__name__)
             self.perf_logger = get_performance_logger(__name__)
-            
+
             self.logger.info("Logging system initialized successfully")
-            
+
         except Exception as e:
             print(f"Failed to setup logging: {e}")
             sys.exit(1)
-    
+
     async def initialize(self) -> None:
         """
         Initialize all application components.
-        
+
         This method sets up all components in the correct order,
         handles dependencies, and performs health checks.
-        
+
         Raises:
             ApplicationError: If initialization fails
         """
         try:
             self.logger.info("Starting application initialization...")
-            
+
             # Ensure required directories exist
             await self._ensure_directories()
-            
+
             # Initialize core components in dependency order
             await self._initialize_state_manager()
             await self._initialize_cache_manager()
             await self._initialize_llm_processor()
             await self._initialize_decision_engine()
-            
+
             # Initialize integration handlers
             await self._initialize_woocommerce_handler()
             await self._initialize_excel_handler()
-            
+
             # Initialize Telegram handler (last, as it depends on others)
             await self._initialize_telegram_handler()
-            
+
             # Perform health checks
             await self._perform_health_checks()
             
