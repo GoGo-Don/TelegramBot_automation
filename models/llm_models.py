@@ -4,12 +4,13 @@ LLM Request and Response Models
 Defines data structures for handling LLM prompts, requests,
 responses, and conversation context.
 
-Author: Development Team
+Author: GG
 Date: 2025-09-16
 """
 
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
 
 
 class PromptTemplate(BaseModel):

@@ -1,13 +1,13 @@
 # requirements.txt
 # Telegram Bot Framework
 python-telegram-bot==20.7
-telegram==0.0.1
 
 # LLM Integration
 openai==1.35.7
 anthropic==0.25.8
 langchain==0.2.5
 langchain-community==0.2.5
+tiktoken
 
 # WooCommerce Integration
 woocommerce==3.0.0
@@ -35,6 +35,7 @@ aiofiles==23.2.0
 redis==5.0.4
 sqlalchemy==2.0.30
 alembic==1.13.1
+aiosqlite
 
 # Logging and Monitoring
 structlog==24.1.0

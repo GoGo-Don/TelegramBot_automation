@@ -6,46 +6,35 @@ multiple providers (OpenAI, Anthropic, etc.), intelligent prompt engineering,
 response processing, and decision-making assistance. It implements advanced features
 including context management, token optimization, and provider fallback mechanisms.
 
-Author: Development Team
-Version: 1.0.0
+Author: GG
+Version: 0.1.0
 Date: 2025-09-16
 """
 
-import asyncio
+import base64
 import json
 import time
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any, Union, Callable, Tuple
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
-import base64
 from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import openai
 import anthropic
-from openai import AsyncOpenAI
-from anthropic import AsyncAnthropic
-import tiktoken
-from PIL import Image
 import httpx
+import openai
+import tiktoken
+from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
+from PIL import Image
 
+from config.logging_config import get_logger, get_performance_logger
 from config.settings import get_config
-from config.logging_config import get_logger, get_performance_logger, set_logging_context
-from models.llm_models import (
-    LLMProvider, LLMRequest, LLMResponse, PromptTemplate,
-    ConversationContext, TokenUsage, ModelCapabilities
-)
-from models.data_models import ProcessingTask, MediaFile
-from utils.exceptions import (
-    LLMProcessingError, TokenLimitExceededError, ProviderUnavailableError,
-    InvalidRequestError, RateLimitExceededError
-)
-from utils.helpers import truncate_text, estimate_tokens, retry_with_backoff
-
-
-# Configure module logger
-logger = get_logger(__name__)
-perf_logger = get_performance_logger(__name__)
+from models.data_models import ProcessingTask
+from models.llm_models import LLMRequest, PromptTemplate
+from utils.exceptions import (LLMProcessingError, ProviderUnavailableError,
+                              RateLimitExceededError)
+from utils.helpers import estimate_tokens, retry_with_backoff, truncate_text
 
 
 class ProviderType(Enum):
@@ -59,35 +48,35 @@ class ProviderType(Enum):
 class ProcessingResult:
     """
     Result of LLM processing operation.
-    
+
     This class encapsulates the complete result of an LLM processing request
     including the generated response, token usage, performance metrics,
     and any metadata associated with the processing.
     """
-    
+
     # Response data
     content: str
     reasoning: Optional[str] = None
     confidence: Optional[float] = None
-    
+
     # Processing metadata
     provider: str = ""
     model: str = ""
     processing_time_ms: float = 0.0
-    
+
     # Token usage
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
     estimated_cost: float = 0.0
-    
+
     # Request context
     request_id: Optional[str] = None
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    
+
+
     # Additional data
     metadata: Dict[str, Any] = field(default_factory=dict)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert result to dictionary format."""
         return {
@@ -110,29 +99,30 @@ class ProcessingResult:
 class PromptEngine:
     """
     Advanced prompt engineering and template management.
-    
+
     This class provides sophisticated prompt construction, template management,
     and context optimization for various LLM providers and use cases.
     """
-    
+
     def __init__(self):
         """Initialize prompt engine with templates and utilities."""
         self.templates = self._load_prompt_templates()
         self.context_limits = {
             'gpt-4': 128000,
-            'gpt-4-32k': 32000, 
+            'gpt-4-32k': 32000,
             'gpt-3.5-turbo': 16000,
             'claude-3-opus': 200000,
             'claude-3-sonnet': 200000,
             'claude-3-haiku': 200000
         }
-        
-        logger.debug("Prompt engine initialized with templates")
-    
+
+        self.logger = get_logger(__name__)
+        self.logger.debug("Prompt engine initialized with templates")
+
     def _load_prompt_templates(self) -> Dict[str, PromptTemplate]:
         """Load and initialize prompt templates."""
         templates = {}
-        
+
         # Data Analysis Template
         templates['data_analysis'] = PromptTemplate(
             name='data_analysis',
@@ -143,7 +133,7 @@ class PromptEngine:
 4. Make informed decisions about next steps
 
 Always structure your responses with clear reasoning and confidence levels.""",
-            
+
             user_prompt="""Analyze the following data and provide insights:
 
 {data_context}
@@ -166,7 +156,7 @@ Response format should be JSON with the following structure:
 }""",
             variables=['data_context']
         )
-        
+
         # Decision Making Template
         templates['decision_making'] = PromptTemplate(
             name='decision_making',
@@ -179,7 +169,7 @@ Available actions:
 4. CHAIN_LLM_PROCESSING - Use another LLM for further analysis
 
 Consider the data type, content quality, user intent, and business logic when making decisions.""",
-            
+
             user_prompt="""Based on this analysis, decide what action to take:
 
 **Analysis Results:**
@@ -204,12 +194,12 @@ Choose the most appropriate action and provide detailed reasoning. Format your r
 }""",
             variables=['analysis_results', 'available_data', 'user_context']
         )
-        
+
         # WooCommerce Product Template
         templates['woocommerce_product'] = PromptTemplate(
             name='woocommerce_product',
             system_prompt="""You are an expert e-commerce product listing creator. Generate compelling product descriptions, titles, and metadata for WooCommerce based on provided data (images, descriptions, specifications).""",
-            
+
             user_prompt="""Create a WooCommerce product listing based on this data:
 
 {product_data}
@@ -230,12 +220,12 @@ Generate the following in JSON format:
 }""",
             variables=['product_data']
         )
-        
+
         # Excel Data Template
         templates['excel_data'] = PromptTemplate(
             name='excel_data',
             system_prompt="""You are a data processing specialist that structures information for Excel databases. Extract and organize data in a format suitable for spreadsheet storage.""",
-            
+
             user_prompt="""Process this data for Excel database entry:
 
 {input_data}
@@ -279,7 +269,7 @@ Generate 3-5 specific questions that would help improve the analysis or decision
         )
         
         return templates
-    
+
     def get_template(self, template_name: str) -> Optional[PromptTemplate]:
         """
         Get prompt template by name.
@@ -291,7 +281,7 @@ Generate 3-5 specific questions that would help improve the analysis or decision
             PromptTemplate object or None if not found
         """
         return self.templates.get(template_name)
-    
+
     def render_prompt(self, template_name: str, variables: Dict[str, Any]) -> Tuple[str, str]:
         """
         Render prompt template with provided variables.
@@ -320,7 +310,7 @@ Generate 3-5 specific questions that would help improve the analysis or decision
             system_prompt = template.system_prompt.format(**variables) if template.system_prompt else ""
             user_prompt = template.user_prompt.format(**variables)
             
-            logger.debug(f"Rendered template '{template_name}' with {len(variables)} variables")
+            self.logger.debug(f"Rendered template '{template_name}' with {len(variables)} variables")
             
             return system_prompt, user_prompt
             
@@ -328,7 +318,7 @@ Generate 3-5 specific questions that would help improve the analysis or decision
             raise ValueError(f"Template variable error: {e}")
         except Exception as e:
             raise ValueError(f"Template rendering error: {e}")
-    
+
     def optimize_for_context(self, text: str, model: str, max_tokens: int = None) -> str:
         """
         Optimize text content for model context limits.
@@ -355,27 +345,27 @@ Generate 3-5 specific questions that would help improve the analysis or decision
             target_tokens = int(context_limit * 0.7)  # Leave room for response
             optimized_text = truncate_text(text, target_tokens)
             
-            logger.debug(f"Optimized text from {current_tokens} to {estimate_tokens(optimized_text, model)} tokens")
+            self.logger.debug(f"Optimized text from {current_tokens} to {estimate_tokens(optimized_text, model)} tokens")
             
             return optimized_text
             
         except Exception as e:
-            logger.warning(f"Context optimization failed: {e}, using original text")
+            self.logger.warning(f"Context optimization failed: {e}, using original text")
             return text
 
 
 class OpenAIProvider:
     """
     OpenAI API provider implementation.
-    
+
     This class handles all interactions with OpenAI's API including
     chat completions, vision processing, and token management.
     """
-    
+
     def __init__(self, api_key: str):
         """
         Initialize OpenAI provider.
-        
+
         Args:
             api_key: OpenAI API key
         """
@@ -398,28 +388,29 @@ class OpenAIProvider:
                 'cost_per_1k_tokens': {'input': 0.0015, 'output': 0.002}
             }
         }
-        
-        logger.debug("OpenAI provider initialized")
-    
+
+        self.logger = get_logger(__name__)
+        self.logger.debug("OpenAI provider initialized")
+
     async def process_request(self, request: LLMRequest) -> ProcessingResult:
         """
         Process LLM request using OpenAI API.
-        
+
         Args:
             request: LLM request object
-            
+
         Returns:
             Processing result
-            
+
         Raises:
             LLMProcessingError: If processing fails
         """
         start_time = time.time()
-        
+
         try:
             # Prepare messages
             messages = self._prepare_messages(request)
-            
+
             # Make API request
             response = await self.client.chat.completions.create(
                 model=request.model,
@@ -430,25 +421,25 @@ class OpenAIProvider:
                 frequency_penalty=request.frequency_penalty,
                 presence_penalty=request.presence_penalty
             )
-            
+
             # Process response
             result = self._process_response(response, request, start_time)
-            
-            logger.info(f"OpenAI request completed in {result.processing_time_ms:.1f}ms")
-            
+
+            self.logger.info(f"OpenAI request completed in {result.processing_time_ms:.1f}ms")
+
             return result
-            
+
         except openai.RateLimitError as e:
-            logger.error(f"OpenAI rate limit exceeded: {e}")
+            self.logger.error(f"OpenAI rate limit exceeded: {e}")
             raise RateLimitExceededError(f"OpenAI rate limit: {e}")
         except openai.AuthenticationError as e:
-            logger.error(f"OpenAI authentication error: {e}")
+            self.logger.error(f"OpenAI authentication error: {e}")
             raise ProviderUnavailableError(f"OpenAI auth error: {e}")
         except openai.APIError as e:
-            logger.error(f"OpenAI API error: {e}")
+            self.logger.error(f"OpenAI API error: {e}")
             raise LLMProcessingError(f"OpenAI API error: {e}")
         except Exception as e:
-            logger.error(f"Unexpected OpenAI error: {e}")
+            self.logger.error(f"Unexpected OpenAI error: {e}")
             raise LLMProcessingError(f"OpenAI processing failed: {e}")
     
     def _prepare_messages(self, request: LLMRequest) -> List[Dict[str, Any]]:
@@ -581,7 +572,7 @@ class AnthropicProvider:
             }
         }
         
-        logger.debug("Anthropic provider initialized")
+        self.logger.debug("Anthropic provider initialized")
     
     async def process_request(self, request: LLMRequest) -> ProcessingResult:
         """
@@ -615,21 +606,21 @@ class AnthropicProvider:
             # Process response
             result = self._process_response(response, request, start_time)
             
-            logger.info(f"Anthropic request completed in {result.processing_time_ms:.1f}ms")
+            self.logger.info(f"Anthropic request completed in {result.processing_time_ms:.1f}ms")
             
             return result
             
         except anthropic.RateLimitError as e:
-            logger.error(f"Anthropic rate limit exceeded: {e}")
+            self.logger.error(f"Anthropic rate limit exceeded: {e}")
             raise RateLimitExceededError(f"Anthropic rate limit: {e}")
         except anthropic.AuthenticationError as e:
-            logger.error(f"Anthropic authentication error: {e}")
+            self.logger.error(f"Anthropic authentication error: {e}")
             raise ProviderUnavailableError(f"Anthropic auth error: {e}")
         except anthropic.APIError as e:
-            logger.error(f"Anthropic API error: {e}")
+            self.logger.error(f"Anthropic API error: {e}")
             raise LLMProcessingError(f"Anthropic API error: {e}")
         except Exception as e:
-            logger.error(f"Unexpected Anthropic error: {e}")
+            self.logger.error(f"Unexpected Anthropic error: {e}")
             raise LLMProcessingError(f"Anthropic processing failed: {e}")
     
     def _prepare_messages(self, request: LLMRequest) -> List[Dict[str, Any]]:
@@ -704,25 +695,29 @@ class AnthropicProvider:
 class LLMProcessor:
     """
     Main LLM processor with multi-provider support and intelligent routing.
-    
+
     This class provides the primary interface for LLM processing with
     advanced features including provider fallback, response validation,
     context management, and cost optimization.
     """
-    
+
     def __init__(self):
         """Initialize LLM processor with configuration and providers."""
         self.config = get_config()
+
         self.prompt_engine = PromptEngine()
         self.providers: Dict[str, Union[OpenAIProvider, AnthropicProvider]] = {}
         self.usage_stats: Dict[str, Dict[str, Any]] = {}
         self.request_history: List[Dict[str, Any]] = []
-        
+
+        # Configure module logger
+        self.logger = get_logger(__name__)
+        self.perf_logger = get_performance_logger(__name__)
+        self.logger.info("LLM processor initialized")
+
         # Initialize providers
         self._initialize_providers()
-        
-        logger.info("LLM processor initialized")
-    
+
     def _initialize_providers(self) -> None:
         """Initialize available LLM providers."""
         try:
@@ -731,23 +726,22 @@ class LLMProcessor:
                 self.providers[ProviderType.OPENAI.value] = OpenAIProvider(
                     self.config.llm.openai_api_key
                 )
-                logger.debug("OpenAI provider initialized")
-            
+                self.logger.debug("OpenAI provider initialized")
+
             # Initialize Anthropic provider
             if self.config.llm.anthropic_api_key:
                 self.providers[ProviderType.ANTHROPIC.value] = AnthropicProvider(
                     self.config.llm.anthropic_api_key
                 )
-                logger.debug("Anthropic provider initialized")
-            
+                self.logger.debug("Anthropic provider initialized")
+
             if not self.providers:
-                logger.warning("No LLM providers configured")
-            
+                self.logger.warning("No LLM providers configured")
+
         except Exception as e:
-            logger.error(f"Error initializing LLM providers: {e}")
+            self.logger.error(f"Error initializing LLM providers: {e}")
             raise
-    
-    @perf_logger.log_function_performance("analyze_data")
+
     async def analyze_data(self, task: ProcessingTask) -> ProcessingResult:
         """
         Analyze data using appropriate LLM provider.
@@ -761,48 +755,53 @@ class LLMProcessor:
         Raises:
             LLMProcessingError: If analysis fails
         """
-        try:
-            # Prepare data context
-            data_context = await self._prepare_data_context(task)
-            
-            # Create LLM request
-            request = await self._create_analysis_request(data_context, task)
-            
-            # Process with primary provider
-            try:
-                result = await self._process_with_provider(
-                    request, 
-                    self.config.llm.primary_provider
-                )
-                
-                # Validate and parse result
-                parsed_result = await self._parse_analysis_result(result.content)
-                result.metadata.update(parsed_result)
-                
-                return result
-                
-            except (ProviderUnavailableError, RateLimitExceededError) as e:
-                logger.warning(f"Primary provider failed: {e}, trying fallback")
-                
-                # Try fallback providers
-                for fallback_provider in self.config.llm.fallback_providers:
-                    try:
-                        result = await self._process_with_provider(request, fallback_provider)
-                        parsed_result = await self._parse_analysis_result(result.content)
-                        result.metadata.update(parsed_result)
-                        return result
-                    except Exception as fallback_error:
-                        logger.warning(f"Fallback provider {fallback_provider} failed: {fallback_error}")
-                        continue
-                
-                # All providers failed
-                raise LLMProcessingError("All LLM providers failed")
+        decorator = self.perf_logger.log_function_performance("analyze_data")
         
-        except Exception as e:
-            logger.error(f"Data analysis failed: {e}")
-            raise LLMProcessingError(f"Analysis failed: {e}")
+        @decorator
+        async def _analyze_data_inner():
+            try:
+                # Prepare data context
+                data_context = await self._prepare_data_context(task)
+                
+                # Create LLM request
+                request = await self._create_analysis_request(data_context, task)
+                
+                # Process with primary provider
+                try:
+                    result = await self._process_with_provider(
+                        request, 
+                        self.config.llm.primary_provider
+                    )
+                    
+                    # Validate and parse result
+                    parsed_result = await self._parse_analysis_result(result.content)
+                    result.metadata.update(parsed_result)
+                    
+                    return result
+                    
+                except (ProviderUnavailableError, RateLimitExceededError) as e:
+                    self.logger.warning(f"Primary provider failed: {e}, trying fallback")
+                    
+                    # Try fallback providers
+                    for fallback_provider in self.config.llm.fallback_providers:
+                        try:
+                            result = await self._process_with_provider(request, fallback_provider)
+                            parsed_result = await self._parse_analysis_result(result.content)
+                            result.metadata.update(parsed_result)
+                            return result
+                        except Exception as fallback_error:
+                            self.logger.warning(f"Fallback provider {fallback_provider} failed: {fallback_error}")
+                            continue
+                    
+                    # All providers failed
+                    raise LLMProcessingError("All LLM providers failed")
+            
+            except Exception as e:
+                self.logger.error(f"Data analysis failed: {e}")
+                raise LLMProcessingError(f"Analysis failed: {e}")
+
+        await _analyze_data_inner()
     
-    @perf_logger.log_function_performance("make_decision")
     async def make_decision(self, analysis_result: ProcessingResult, 
                            task: ProcessingTask) -> ProcessingResult:
         """
@@ -811,42 +810,48 @@ class LLMProcessor:
         Args:
             analysis_result: Results from data analysis
             task: Original processing task
-            
+
         Returns:
             Decision results
         """
-        try:
-            # Prepare decision context
-            decision_context = await self._prepare_decision_context(
-                analysis_result, task
-            )
-            
-            # Create decision request
-            request = await self._create_decision_request(decision_context)
-            
-            # Process decision
-            result = await self._process_with_provider(
-                request,
-                self.config.llm.primary_provider
-            )
-            
-            # Validate and parse decision
-            decision_data = await self._parse_decision_result(result.content)
-            result.metadata.update(decision_data)
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"Decision making failed: {e}")
-            raise LLMProcessingError(f"Decision failed: {e}")
-    
+        decorator = self.perf_logger.log_function_performance("make_decision")
+
+        @decorator
+        async def _make_decision_inner():
+            try:
+                # Prepare decision context
+                decision_context = await self._prepare_decision_context(
+                    analysis_result, task
+                )
+
+                # Create decision request
+                request = await self._create_decision_request(decision_context)
+
+                # Process decision
+                result = await self._process_with_provider(
+                    request,
+                    self.config.llm.primary_provider
+                )
+
+                # Validate and parse decision
+                decision_data = await self._parse_decision_result(result.content)
+                result.metadata.update(decision_data)
+
+                return result
+
+            except Exception as e:
+                self.logger.error(f"Decision making failed: {e}")
+                raise LLMProcessingError(f"Decision failed: {e}")
+
+        await _make_decision_inner()
+
     async def generate_woocommerce_content(self, data: Dict[str, Any]) -> ProcessingResult:
         """
         Generate WooCommerce product content.
-        
+
         Args:
             data: Product data
-            
+
         Returns:
             Generated content
         """
@@ -856,7 +861,7 @@ class LLMProcessor:
                 'woocommerce_product',
                 {'product_data': json.dumps(data, indent=2)}
             )
-            
+
             request = LLMRequest(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
@@ -864,30 +869,30 @@ class LLMProcessor:
                 temperature=0.7,
                 max_tokens=2000
             )
-            
+
             # Process request
             result = await self._process_with_provider(
                 request, 
                 self.config.llm.primary_provider
             )
-            
+
             # Parse product data
             product_data = await self._parse_json_response(result.content)
             result.metadata.update(product_data)
-            
+
             return result
-            
+
         except Exception as e:
-            logger.error(f"WooCommerce content generation failed: {e}")
+            self.logger.error(f"WooCommerce content generation failed: {e}")
             raise LLMProcessingError(f"Content generation failed: {e}")
-    
+
     async def generate_excel_data(self, data: Dict[str, Any]) -> ProcessingResult:
         """
         Generate Excel-formatted data.
-        
+
         Args:
             data: Input data
-            
+
         Returns:
             Structured Excel data
         """
@@ -897,7 +902,7 @@ class LLMProcessor:
                 'excel_data',
                 {'input_data': json.dumps(data, indent=2)}
             )
-            
+
             request = LLMRequest(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
@@ -905,21 +910,21 @@ class LLMProcessor:
                 temperature=0.3,  # Lower temperature for structured data
                 max_tokens=1500
             )
-            
+
             # Process request
             result = await self._process_with_provider(
                 request,
                 self.config.llm.primary_provider
             )
-            
+
             # Parse Excel data
             excel_data = await self._parse_json_response(result.content)
             result.metadata.update(excel_data)
-            
+
             return result
-            
+
         except Exception as e:
-            logger.error(f"Excel data generation failed: {e}")
+            self.logger.error(f"Excel data generation failed: {e}")
             raise LLMProcessingError(f"Excel generation failed: {e}")
     
     async def generate_followup_questions(self, context: Dict[str, Any]) -> ProcessingResult:
@@ -960,7 +965,7 @@ class LLMProcessor:
             return result
             
         except Exception as e:
-            logger.error(f"Follow-up questions generation failed: {e}")
+            self.logger.error(f"Follow-up questions generation failed: {e}")
             raise LLMProcessingError(f"Questions generation failed: {e}")
     
     async def _prepare_data_context(self, task: ProcessingTask) -> str:
@@ -1017,7 +1022,7 @@ class LLMProcessor:
                                 image_data.append(encoded_image)
                                 has_images = True
                     except Exception as e:
-                        logger.warning(f"Failed to load image {media.get('local_path')}: {e}")
+                        self.logger.warning(f"Failed to load image {media.get('local_path')}: {e}")
         
         # Render prompt template
         system_prompt, user_prompt = self.prompt_engine.render_prompt(
@@ -1122,7 +1127,7 @@ class LLMProcessor:
             return json.loads(response_content)
             
         except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse JSON response: {e}")
+            self.logger.warning(f"Failed to parse JSON response: {e}")
             return {
                 'raw_response': response_content,
                 'parse_error': str(e)

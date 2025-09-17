@@ -8,7 +8,7 @@ Features:
 - In-memory caching for fast access
 - Comprehensive error handling & verbose documentation
 
-Author: Development Team
+Author: GG
 Date: 2025-09-16
 """
 
@@ -17,11 +17,12 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
-# Example models - replace with your real models as needed!
-from models.data_models import ProcessingTask
-from redis import asyncio as aioredis
+import redis.asyncio as redis
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
+
+# Example models - replace with your real models as needed!
+from models.data_models import ProcessingTask
 
 
 class StateManagerError(Exception):
@@ -40,7 +41,8 @@ class StateManager:
     """
     StateManager - Async state handling for users, sessions, and tasks.
 
-    Stores session state in Redis, falls back to database for audit/log persistence.
+    Stores session state in Redis, falls back to database for audit/log
+    persistence.
     Caching ensures high performance for frequent access.
     """
 
@@ -61,7 +63,7 @@ class StateManager:
         self.session_timeout_sec = session_timeout_sec
         self.database_url = database_url
 
-        self.redis: Optional[aioredis.Redis] = None
+        self.redis_client: Optional[redis.Redis] = None
         self.engine = create_async_engine(database_url, future=True, echo=False)
         self.SessionLocal = sessionmaker(
             self.engine, expire_on_commit=False, class_=AsyncSession
@@ -70,15 +72,22 @@ class StateManager:
 
     async def initialize(self) -> None:
         """Connect to Redis and test DB."""
-        self.redis = await aioredis.create_redis_pool(self.redis_url)
-        async with self.engine.begin() as conn:
-            await conn.run_sync(lambda conn: None)  # Connection test
+        try:
+            self.redis_client = redis.Redis.from_url(self.redis_url)
+            # Optional: test connection
+            pong = await self.redis_client.ping()
+            if pong:
+                self.logger.info("Connected to Redis successfully.")
+            else:
+                self.logger.warning("Ping to Redis returned False.")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize Redis client: {e}")
+            raise RuntimeError(f"State manager initialization failed: {e}")
 
     async def close(self) -> None:
         """Gracefully close Redis and DB."""
-        if self.redis:
-            self.redis.close()
-            await self.redis.wait_closed()
+        if self.redis_client:
+            await self.redis_client.aclose()
         await self.engine.dispose()
         self.logger.info("StateManager closed all connections.")
 
@@ -104,7 +113,7 @@ class StateManager:
         Raises: SessionNotFoundError if missing
         """
         key = f"user_session:{user_id}"
-        value = await self.redis.get(key)
+        value = await self.redis_client.get(key)
         if not value:
             self.logger.warning(f"Session not found for user {user_id}")
             raise SessionNotFoundError(f"Session not found for user {user_id}")
@@ -113,7 +122,7 @@ class StateManager:
     async def clear_user_session(self, user_id: int) -> None:
         """Delete a user session."""
         key = f"user_session:{user_id}"
-        await self.redis.delete(key)
+        await self.redis_client.delete(key)
         self.logger.info(f"Session cleared for user {user_id}")
 
     # Processing task state management
@@ -126,7 +135,7 @@ class StateManager:
         """
         key = f"task:{task.id}"
         value = json.dumps(task.to_dict())
-        await self.redis.set(key, value, expire=60 * 60)
+        await self.redis_client.set(key, value, ex=60 * 60)
         # Persist to DB (assume SQLAlchemy model ProcessingTask)
         async with self.SessionLocal() as session:
             await session.merge(task)
@@ -136,7 +145,7 @@ class StateManager:
     async def get_task_state(self, task_id: str) -> Optional[dict]:
         """Retrieve task state from Redis or DB."""
         key = f"task:{task_id}"
-        value = await self.redis.get(key)
+        value = await self.redis_client.get(key)
         if value:
             return json.loads(value)
         # Fallback: DB
@@ -156,7 +165,7 @@ class StateManager:
     async def get_metrics(self) -> Dict[str, Any]:
         """Return simple metrics for monitoring."""
         # Implement more advanced metrics as needed
-        kc = await self.redis.keys("user_session:*")
+        kc = await self.redis_client.keys("user_session:*")
         total_sessions = len(kc) if kc else 0
         return {"total_sessions": total_sessions}
 
@@ -166,7 +175,7 @@ class StateManager:
         """
         result = {"status": "healthy", "redis": None, "database": None}
         try:
-            pong = await self.redis.ping()
+            pong = await self.redis_client.ping()
             result["redis"] = pong
         except Exception as e:
             result["status"] = "degraded"

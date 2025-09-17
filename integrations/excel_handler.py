@@ -4,7 +4,7 @@ Excel Handler Module
 Handles integration with Microsoft Excel Online via Microsoft Graph API.
 Performs workbook updates, data batch insertion, and manages authentication.
 
-Author: Development Team
+Author: GG
 Date: 2025-09-16
 """
 

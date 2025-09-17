@@ -4,7 +4,7 @@ WooCommerce Handler Module
 Manages WooCommerce REST API integration to create product posts,
 upload images, and manage product metadata drafts.
 
-Author: Development Team
+Author: GG
 Date: 2025-09-16
 """
 

@@ -4,14 +4,15 @@ Core Data Models
 Includes processing tasks, statuses, and priority enumerations.
 These models represent application-level business entities.
 
-Author: Development Team
+Author: GG
 Date: 2025-09-16
 """
 
-from pydantic import BaseModel, Field
-from enum import Enum
 from datetime import datetime
-from typing import Dict, Any, Optional
+from enum import Enum
+from typing import Any, Dict, Optional
+
+from pydantic import BaseModel, Field
 
 
 class TaskStatus(str, Enum):

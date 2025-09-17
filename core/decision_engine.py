@@ -5,7 +5,7 @@ Implements intelligent decision-making logic for the Telegram LLM-based system.
 Interprets LLM outputs and decides actions like WooCommerce posting,
 Excel updates, follow-up questioning, or chaining further LLM calls.
 
-Author: Development Team
+Author: GG
 Date: 2025-09-16
 """
 
@@ -14,13 +14,13 @@ import json
 import logging
 from typing import Any, Dict, Optional
 
+from telegram import Bot
+
+from core.llm_processor import LLMProcessor
 from integrations.excel_handler import ExcelHandler
 from integrations.woocommerce_handler import WooCommerceHandler
 from models.decision_models import ActionType, DecisionRequest, DecisionResponse
-from telegram import Bot
 from utils.exceptions import DecisionEngineError
-
-from core.llm_processor import LLMProcessor
 
 logger = logging.getLogger(__name__)
 

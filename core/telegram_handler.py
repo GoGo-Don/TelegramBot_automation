@@ -6,8 +6,8 @@ multimedia data reception, conversation state management, and user interaction h
 It implements advanced features including media group processing, file validation,
 and seamless integration with the decision engine.
 
-Author: Development Team
-Version: 1.0.0
+Author: GG
+Version: 0.1.0
 Date: 2025-09-16
 """
 
@@ -23,14 +23,6 @@ from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 import aiofiles
 import magic
-from config.logging_config import (get_logger, get_performance_logger,
-                                   set_logging_context)
-from config.settings import get_config
-from core.state_manager import StateManager
-from models.data_models import Priority, ProcessingTask, TaskStatus
-from models.telegram_models import (ConversationState, MediaFile, MediaGroup,
-                                    MessageContext, TelegramMessage,
-                                    TelegramUser, UserSession)
 from PIL import Image
 from telegram import (Bot, BotCommand, Document, File, InlineKeyboardButton,
                       InlineKeyboardMarkup, KeyboardButton, Message, PhotoSize,
@@ -39,6 +31,15 @@ from telegram.error import BadRequest, NetworkError, TelegramError
 from telegram.ext import (Application, CallbackQueryHandler, CommandHandler,
                           ContextTypes, ConversationHandler, JobQueue,
                           MessageHandler, filters)
+
+from config.logging_config import (get_logger, get_performance_logger,
+                                   set_logging_context)
+from config.settings import get_config
+from core.state_manager import StateManager
+from models.data_models import Priority, ProcessingTask, TaskStatus
+from models.telegram_models import (ConversationState, MediaFile, MediaGroup,
+                                    MessageContext, TelegramMessage,
+                                    TelegramUser, UserSession)
 from utils.exceptions import (ConfigurationError, MediaProcessingError,
                               StorageError, TelegramHandlerError,
                               ValidationError)

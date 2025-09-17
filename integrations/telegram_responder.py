@@ -4,7 +4,7 @@ Telegram Responder Module
 Handles generation and sending of responses back to Telegram users,
 including follow-up questions, confirmations, and notifications.
 
-Author: Development Team
+Author: GG
 Date: 2025-09-16
 """
 

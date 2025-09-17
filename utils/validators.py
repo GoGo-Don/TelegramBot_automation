@@ -3,12 +3,12 @@ Validation Utilities
 
 Provides reusable validators for media files, user inputs, and other data structures.
 
-Author: Development Team
+Author: GG
 Date: 2025-09-16
 """
 
-from typing import Set, Optional
 import mimetypes
+from typing import Optional, Set
 
 
 class ValidationResult:

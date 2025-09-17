@@ -4,14 +4,14 @@ Cache Manager Module
 Manages caching for the application using Redis, supporting TTL, 
 size limits, and async commands.
 
-Author: Development Team
+Author: GG
 Date: 2025-09-16
 """
 
 import logging
 from typing import Any, Optional
 
-from redis import asyncio as aioredis
+import redis.asyncio as redis
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +25,13 @@ class CacheManager:
         self.redis_url = redis_url
         self.ttl_seconds = ttl_seconds
         self.max_size_mb = max_size_mb
-        self.redis: Optional[aioredis.Redis] = None
+        self.redis: Optional[redis.Redis] = None
 
     async def initialize(self):
         """
         Connect to Redis server.
         """
-        self.redis = await aioredis.create_redis_pool(self.redis_url)
+        self.redis_client = redis.Redis.from_url(self.redis_url)
         logger.info("CacheManager connected to Redis.")
 
     async def get(self, key: str) -> Optional[bytes]:
@@ -44,8 +44,8 @@ class CacheManager:
         Returns:
             Cached value or None.
         """
-        if self.redis:
-            return await self.redis.get(key)
+        if self.redis_client:
+            return await self.redis_client.get(key)
         return None
 
     async def set(self, key: str, value: bytes, expire: Optional[int] = None) -> None:
@@ -57,8 +57,8 @@ class CacheManager:
             value: Value to cache.
             expire: Expiry in seconds.
         """
-        if self.redis:
-            await self.redis.set(key, value, expire=expire or self.ttl_seconds)
+        if self.redis_client:
+            await self.redis_client.set(key, value, expire=expire or self.ttl_seconds)
             logger.debug(f"Cache set: {key}")
 
     async def delete(self, key: str) -> None:
@@ -68,8 +68,8 @@ class CacheManager:
         Args:
             key: Cache key.
         """
-        if self.redis:
-            await self.redis.delete(key)
+        if self.redis_client:
+            await self.redis_client.delete(key)
             logger.debug(f"Cache deleted: {key}")
 
     async def clear_expired(self) -> None:
@@ -86,7 +86,7 @@ class CacheManager:
             Health status dict.
         """
         try:
-            pong = await self.redis.ping()
+            pong = await self.redis_client.ping()
             return {"status": "healthy" if pong else "unhealthy"}
         except Exception as e:
             logger.error(f"CacheManager health check failed: {e}")
@@ -96,7 +96,6 @@ class CacheManager:
         """
         Close Redis connection.
         """
-        if self.redis:
-            self.redis.close()
-            await self.redis.wait_closed()
+        if self.redis_client:
+            await self.redis_client.aclose()
             logger.info("CacheManager closed Redis connection.")

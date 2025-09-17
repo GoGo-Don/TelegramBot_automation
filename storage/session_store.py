@@ -4,7 +4,7 @@ Session Store Module
 Manages user session storage and retrieval, backed by Redis,
 with serialization and expiration handling.
 
-Author: Development Team
+Author: GG
 Date: 2025-09-16
 """
 

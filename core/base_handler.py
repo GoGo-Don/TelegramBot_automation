@@ -4,7 +4,7 @@ Base Handler Module
 Defines abstract base classes and common interfaces for all handlers
 (e.g., TelegramHandler, DecisionEngine, LLMProcessor).
 
-Author: Development Team
+Author: GG
 Date: 2025-09-16
 """
 

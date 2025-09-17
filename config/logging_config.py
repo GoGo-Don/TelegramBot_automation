@@ -5,8 +5,8 @@ This module provides comprehensive logging configuration with multiple handlers,
 formatters, and logging levels. It supports structured logging, performance monitoring,
 error tracking, and integration with external monitoring systems.
 
-Author: Development Team
-Version: 1.0.0
+Author: GG
+Version: 0.1.0
 Date: 2025-09-16
 """
 
@@ -718,32 +718,32 @@ def get_logger(name: str, level: Optional[str] = None) -> logging.Logger:
 def get_performance_logger(name: str) -> PerformanceLogger:
     """
     Get performance logger for specified module.
-    
+
     Args:
         name: Module name
-        
+
     Returns:
         Performance logger instance
-        
+
     Raises:
         RuntimeError: If logging not initialized
     """
     if _logging_manager is None:
         raise RuntimeError("Logging not initialized. Call setup_logging() first.")
-    
+
     return _logging_manager.get_performance_logger(name)
 
 
 def set_logging_context(**kwargs) -> None:
     """
     Set logging context variables.
-    
+
     Args:
         **kwargs: Context variables (request_id, user_id, session_id)
     """
     if _logging_manager is None:
         return
-    
+
     _logging_manager.set_context(**kwargs)
 
 

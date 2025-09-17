@@ -3,11 +3,14 @@ General Helper Utilities
 
 Common utility functions used across the project.
 
-Author: Development Team
+Author: GG
 Date: 2025-09-16
 """
 
+import asyncio
 import uuid
+from pathlib import Path
+from typing import Union
 
 
 def generate_unique_id() -> str:
@@ -98,3 +101,56 @@ async def retry_with_backoff(
                 raise
             await asyncio.sleep(current_delay)
             current_delay *= backoff
+
+
+async def cleanup_temp_files(directory: Union[str, Path], hours: int = 24) -> int:
+    """
+    Asynchronously remove files older than specified hours from a directory.
+
+    Args:
+        directory: Directory path to clean up.
+        hours: Files older than this number of hours will be deleted.
+
+    Returns:
+        Number of files deleted.
+    """
+    if isinstance(directory, str):
+        directory = Path(directory)
+
+    if not directory.exists() or not directory.is_dir():
+        return 0
+
+    now = asyncio.get_event_loop().time()
+    cutoff = now - (hours * 3600)
+    deleted_count = 0
+
+    for file_path in directory.iterdir():
+        try:
+            if file_path.is_file():
+                # Get file's last modification time as timestamp
+                mtime = file_path.stat().st_mtime
+                if mtime < cutoff:
+                    file_path.unlink()
+                    deleted_count += 1
+        except Exception:
+            pass  # Suppress errors during cleanup
+
+    return deleted_count
+
+
+def ensure_directories(paths: Union[str, Path, list]) -> None:
+    """
+    Ensure given directory path(s) exist, create if missing.
+
+    Args:
+        paths: Single path or list of paths to ensure.
+
+    Raises:
+        OSError: If directory cannot be created.
+    """
+    if isinstance(paths, (str, Path)):
+        paths = [paths]
+
+    for path in paths:
+        p = Path(path)
+        p.mkdir(parents=True, exist_ok=True)

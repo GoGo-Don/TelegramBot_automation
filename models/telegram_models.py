@@ -4,14 +4,15 @@ Telegram Data Models
 Defines data structures representing Telegram entities, messages,
 media files, user sessions, and conversation states.
 
-Author: Development Team
+Author: GG
 Date: 2025-09-16
 """
 
-from pydantic import BaseModel, Field
-from typing import Optional, List
-from enum import Enum
 from datetime import datetime
+from enum import Enum
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
 
 
 class TelegramUser(BaseModel):

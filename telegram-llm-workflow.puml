@@ -1,0 +1,123 @@
+@startuml Telegram LLM Decision Engine Workflow
+
+title Telegram LLM Decision Engine - Complete Workflow
+
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam handwritten false
+skinparam shadowing false
+
+actor User
+participant "Telegram Bot" as TG
+participant "TelegramHandler" as TH
+participant "StateManager" as SM
+participant "LLMProcessor" as LLM
+participant "DecisionEngine" as DE
+participant "WooCommerceHandler" as WC
+participant "ExcelHandler" as EH
+participant "TelegramResponder" as TR
+database "Redis Cache" as RC
+database "SQLite Database" as DB
+actor "LLM APIs" as API
+
+== Initialization Phase ==
+TH -> SM : initialize()
+SM -> RC : connect to Redis
+TH -> DB : setup SQLite async connection
+TH -> TG : start polling for updates
+
+== User Interaction Phase ==
+User -> TG : sends message/media
+TG -> TH : handle_update()
+TH -> SM : get_user_session()
+SM -> RC : retrieve session data
+
+alt Session exists
+    TH -> TH : update_existing_session()
+else New session
+    TH -> TH : create_new_session()
+end
+
+TH -> SM : save_session()
+SM -> RC : store session data
+
+== Media Collection Phase ==
+User -> TG : uploads images/videos/documents
+TG -> TH : handle_media()
+TH -> TH : validate_media()
+TH -> TH : save_media_locally()
+TH -> SM : add_media_to_session()
+
+== User Triggers Analysis ==
+User -> TG : /collect or confirmation
+TG -> TH : trigger_analysis()
+TH -> LLM : analyze_collected_data()
+
+== LLM Processing Phase ==
+LLM -> API : send_prompt_with_media()
+API -> LLM : return analysis result
+LLM -> LLM : parse_response()
+LLM -> DE : send_analysis_for_decision()
+
+== Decision Making Phase ==
+DE -> LLM : request_decision()
+LLM -> API : make_decision_call()
+API -> LLM : return decision JSON
+LLM -> DE : parsed_decision
+
+alt Decision: Create WooCommerce Post
+    DE -> WC : create_product_draft()
+    WC -> WC : format_product_data()
+    WC -> WC : upload_to_woocommerce()
+    WC -> DE : return success/failure
+    DE -> TR : send_confirmation_message()
+    TR -> TG : notify user of product creation
+    TG -> User : "Product draft created!"
+
+else Decision: Update Excel
+    DE -> EH : update_spreadsheet()
+    EH -> EH : authenticate_with_graph_api()
+    EH -> EH : format_excel_data()
+    EH -> EH : update_workbook()
+    EH -> DE : return success/failure
+    DE -> TR : send_confirmation_message()
+    TR -> TG : notify user of excel update
+    TG -> User : "Excel updated successfully!"
+
+else Decision: Request More Data
+    DE -> LLM : generate_followup_questions()
+    LLM -> API : generate_questions()
+    API -> LLM : return questions
+    LLM -> DE : formatted_questions
+    DE -> TR : send_followup_questions()
+    TR -> TG : send questions to user
+    TG -> User : "I need more information..."
+
+else Decision: Chain LLM
+    DE -> LLM : chain_llm_call()
+    LLM -> API : additional_analysis()
+    API -> LLM : enhanced_result
+    LLM -> DE : chained_analysis
+    note over DE : Process continues with new analysis
+end
+
+== Session Management ==
+TH -> SM : update_session_state()
+SM -> RC : persist updated session
+TH -> TH : cleanup_old_files()
+
+== Error Handling ==
+note over TH, DE : All components implement\ncomprehensive error handling
+alt Any error occurs
+    TH -> TR : send_error_message()
+    TR -> TG : notify user of issue
+    TG -> User : "Sorry, something went wrong..."
+    TH -> TH : log_error_details()
+end
+
+== Cleanup Phase ==
+TH -> SM : cleanup_expired_sessions()
+SM -> RC : remove old session data
+TH -> TH : cleanup_temp_files()
+
+@enduml

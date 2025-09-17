@@ -4,15 +4,16 @@ File Manager Utilities
 Includes async functions for downloading, storing, and managing files locally.
 Handles safe filename generation and file integrity checks.
 
-Author: Development Team
+Author: GG
 Date: 2025-09-16
 """
 
-import aiofiles
 import hashlib
 import os
 from pathlib import Path
 from typing import Optional
+
+import aiofiles
 
 
 class FileManager:

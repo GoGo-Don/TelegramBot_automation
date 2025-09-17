@@ -3,7 +3,7 @@ Custom Exception Classes
 
 Defines application-specific exceptions for better error handling.
 
-Author: Development Team
+Author: GG
 Date: 2025-09-16
 """
 
