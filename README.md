@@ -482,7 +482,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🔄 Changelog
 
-### v1.0.0 (2025-09-16)
+### v0.1.0 (2025-09-16)
 - Initial release
 - Core Telegram bot functionality
 - OpenAI and Anthropic LLM integration
